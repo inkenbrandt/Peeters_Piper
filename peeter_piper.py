@@ -21,6 +21,7 @@ year = {2014},
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import scipy.interpolate as interpolate
 
 
 # Define plotting functions hsvtorgb and piper
@@ -167,7 +168,7 @@ def piper(dat_piper, plottitle, alphalevel, color):
         return (dict(cat=cat,
                      an=an))
     else:
-        import scipy.interpolate as interpolate
+
         # create empty grids to interpolate to
         x0 = 0.5
         y0 = x0 * np.tan(np.pi / 6)
