@@ -82,7 +82,7 @@ def mol_convert(dat_piper):
     an[:, 0] = (meqL[:, 4] + meqL[:, 5]) / suman  # HCO3 + CO3
     an[:, 2] = meqL[:, 6] / suman  # Cl
     an[:, 1] = meqL[:, 7] / suman  # SO4
-    return cat, an
+    return cat, an, meqL
 
 
 def ion_in_cartesian(cat,an, offset=0.05):
@@ -174,7 +174,7 @@ def interpolate_colors(offset=0.05):
 def piper(cfile):
     dat_piper = np.loadtxt(cfile, delimiter=',', skiprows=1)
     dat_piper = dat_piper[:, 2:10]
-    cat, an = mol_convert(dat_piper)
+    cat, an, meqL = mol_convert(dat_piper)
 
     offset = 0.05
     offsety = offset * np.tan(np.pi / 3)
@@ -204,75 +204,47 @@ def piper(cfile):
     cat = np.vstack((hsvtorgb(hcat, scat, v))).T
     an = np.vstack((hsvtorgb(han, san, v))).T
     d = np.vstack((hsvtorgb(hd, sd, v))).T
-    return (dict(cat=cat, an=an, diamond=d))
+    return (dict(cat=cat, an=an, diamond=d, meq = meqL))
 
 
-def piper_plot(cfile, plottitle, alphalevel=1.0):
-    """
-    Create a Piper plot
-    INPUT:
-        dat_piper: [nx8] matrix, chemical analysis in mg/L
-                    order: Ca Mg Na K HCO3 CO3 Cl SO4
-        plottitle: string with title of Piper plot
-        alphalevel: transparency level of points. If 1, points are opaque
-        color: boolean, use background coloring of Piper plot
-    OUTPUT:
-        figure with piperplot
-        dictionary with:
-            if color = False:
-                cat: [nx3] meq% of cations, order: Ca Mg Na+K
-                an:  [nx3] meq% of anions,  order: HCO3+CO3 SO4 Cl
-            if color = True:
-                cat: [nx3] RGB triple cations
-                an:  [nx3] RGB triple anions
-                diamond: [nx3] RGB triple central diamond
-    """
-    # Basic shape of piper plot
-    dat_piper = np.loadtxt(cfile, delimiter=',', skiprows=1)
-    dat_piper = dat_piper[:, 2:10]
-    offset = 0.05
-    offsety = offset * np.tan(np.pi / 3)
-    h = 0.5 * np.tan(np.pi / 3)
-    ltriangle_x = np.array([0, 0.5, 1, 0])
-    ltriangle_y = np.array([0, h, 0, 0])
-    rtriangle_x = ltriangle_x + 2 * offset + 1
-    rtriangle_y = ltriangle_y
-    diamond_x = np.array([0.5, 1, 1.5, 1, 0.5]) + offset
-    diamond_y = h * (np.array([1, 2, 1, 0, 1])) + (offset * np.tan(np.pi / 3))
-    fig = plt.figure()
-    ax = fig.add_subplot(111, aspect='equal', frameon=False, xticks=[], yticks=[])
-    ax.plot(ltriangle_x, ltriangle_y, '-k')
-    ax.plot(rtriangle_x, rtriangle_y, '-k')
-    ax.plot(diamond_x, diamond_y, '-k')
+def check_nak(x):
+    if x[0] == 0 and x[2] > 0:
+        return x[2]
+    else:
+        return x[0] + x[1]
 
 
-    cat, an = mol_convert(dat_piper)
-    cat_x, cat_y, an_x, an_y, d_x, d_y = ion_in_cartesian(cat, an)
-    s_cat, s_an, s_d, RGBA = interpolate_colors()
+def calc_totals(df1):
 
-    # visualise
-    plt.imshow(RGBA,
-               origin='lower',
-               aspect=1.0,
-               extent=(0, 2 + 2 * offset, 0, 2 * h + offsety))
-    # labels and title
-    plt.title(plottitle)
-    plt.text(-offset, -offset, u'$Ca^{2+}$', horizontalalignment='left', verticalalignment='center')
-    plt.text(0.5, h + offset, u'$Mg^{2+}$', horizontalalignment='center', verticalalignment='center')
-    plt.text(1 + offset, -offset, u'$Na^+ + K^+$', horizontalalignment='right', verticalalignment='center')
-    plt.text(1 + offset, -offset, u'$HCO_3^- + CO_3^{2-}$', horizontalalignment='left', verticalalignment='center')
-    plt.text(1.5 + 2 * offset, h + offset, u'$SO_4^{2-}$', horizontalalignment='center', verticalalignment='center')
-    plt.text(2 + 3 * offset, -offset, u'$Cl^-$', horizontalalignment='right', verticalalignment='center')
 
-    # plot data
-    plt.plot(cat_x, cat_y, '.k', alpha=alphalevel)
-    plt.plot(an_x, an_y, '.k', alpha=alphalevel)
-    plt.plot(d_x, d_y, '.k', alpha=alphalevel)
+    anions = ['Cl', 'HCO3', 'CO3', 'SO4']
+    cations = ['Na', 'K', 'Ca', 'Mg', 'NaK']
+    df1['anions'] = 0
+    df1['cations'] = 0
+    df1['NaK_meqL'] = 0
+    df1['NaK_meqL'] = df1[['Na_meqL', 'K_meqL', 'NaK_meqL']].apply(lambda x: check_nak(x), 1)
+    for ion in anions:
+        if ion in df1.columns:
+            df1['anions'] += df1[ion + '_meqL']
+    for ion in cations:
+        if ion in df1.columns:
+            df1['cations'] += df1[ion + '_meqL']
+
+    df1['EC'] = df1['anions'] - df1['cations']
+    df1['CBE'] = df1['EC'] / (df1['anions'] + df1['cations'])
+    df1['maj_cation'] = df1[['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL', 'NaK_meqL']].idxmax(axis=1)
+    df1['maj_cation'] = df1['maj_cation'].apply(lambda x: str(x)[:-5],1)
+    df1['maj_anion'] = df1[['Cl_meqL', 'SO4_meqL', 'HCO3_meqL', 'CO3_meqL']].idxmax(axis=1)
+    df1['maj_anion'] = df1['maj_anion'].apply(lambda x: str(x)[:-5],1)
+    df1['water_type'] = df1[['maj_cation', 'maj_anion']].apply(lambda x: str(x[0]) + '-' + str(x[1]), 1)
+    return df1
+
 
 
 def data_to_rgb(file):
     data = pd.read_csv(file)
     rgb = piper(file)
+
     data['cat_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['cat']]
     data['an_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['an']]
     data['diamond_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['diamond']]
@@ -304,28 +276,103 @@ class PiperPlt(object):
         self.spatref = None
         self.savedlayer = None
         self.wrkspace = None
+        self.alphalevel = None
 
+    def piper_plot(self):
+        """
+        Create a Piper plot
+        INPUT:
+            dat_piper: [nx8] matrix, chemical analysis in mg/L
+                        order: Ca Mg Na K HCO3 CO3 Cl SO4
+            plottitle: string with title of Piper plot
+            alphalevel: transparency level of points. If 1, points are opaque
+            color: boolean, use background coloring of Piper plot
+        OUTPUT:
+            figure with piperplot
+            dictionary with:
+                if color = False:
+                    cat: [nx3] meq% of cations, order: Ca Mg Na+K
+                    an:  [nx3] meq% of anions,  order: HCO3+CO3 SO4 Cl
+                if color = True:
+                    cat: [nx3] RGB triple cations
+                    an:  [nx3] RGB triple anions
+                    diamond: [nx3] RGB triple central diamond
+        """
+        # Basic shape of piper plot
+        cfile = self.chem_file
+        plottitle = self.plottitle
+        alphalevel = self.alphalevel
+        dat_piper = np.loadtxt(cfile, delimiter=',', skiprows=1)
+        dat_piper = dat_piper[:, 2:10]
+        offset = 0.05
+        offsety = offset * np.tan(np.pi / 3)
+        h = 0.5 * np.tan(np.pi / 3)
+        ltriangle_x = np.array([0, 0.5, 1, 0])
+        ltriangle_y = np.array([0, h, 0, 0])
+        rtriangle_x = ltriangle_x + 2 * offset + 1
+        rtriangle_y = ltriangle_y
+        diamond_x = np.array([0.5, 1, 1.5, 1, 0.5]) + offset
+        diamond_y = h * (np.array([1, 2, 1, 0, 1])) + (offset * np.tan(np.pi / 3))
 
-    def run_piper_plot(self):
-        piper_plot(self.chem_file,self.plottitle)
+        mpl.rcParams['pdf.fonttype'] = 42
+        mpl.rcParams['ps.fonttype'] = 42
+        mpl.rcParams['svg.fonttype'] = 42
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, aspect='equal', frameon=False, xticks=[], yticks=[])
+        ax.plot(ltriangle_x, ltriangle_y, '-k')
+        ax.plot(rtriangle_x, rtriangle_y, '-k')
+        ax.plot(diamond_x, diamond_y, '-k')
+
+        cat, an, meqL = mol_convert(dat_piper)
+        cat_x, cat_y, an_x, an_y, d_x, d_y = ion_in_cartesian(cat, an)
+        s_cat, s_an, s_d, RGBA = interpolate_colors()
+
+        # visualise
+        plt.imshow(RGBA,
+                   origin='lower',
+                   aspect=1.0,
+                   extent=(0, 2 + 2 * offset, 0, 2 * h + offsety))
+        # labels and title
+        plt.title(plottitle)
+        plt.text(-offset, -offset, u'$Ca^{2+}$', horizontalalignment='left', verticalalignment='center')
+        plt.text(0.5, h + offset, u'$Mg^{2+}$', horizontalalignment='center', verticalalignment='center')
+        plt.text(1 + offset, -offset, u'$Na^+ + K^+$', horizontalalignment='right', verticalalignment='center')
+        plt.text(1 + offset, -offset, u'$HCO_3^- + CO_3^{2-}$', horizontalalignment='left', verticalalignment='center')
+        plt.text(1.5 + 2 * offset, h + offset, u'$SO_4^{2-}$', horizontalalignment='center', verticalalignment='center')
+        plt.text(2 + 3 * offset, -offset, u'$Cl^-$', horizontalalignment='right', verticalalignment='center')
+
+        # plot data
+        plt.plot(cat_x, cat_y, '.k', alpha=alphalevel)
+        plt.plot(an_x, an_y, '.k', alpha=alphalevel)
+        plt.plot(d_x, d_y, '.k', alpha=alphalevel)
+
         data = data_to_rgb(self.chem_file)
 
-        newfile = os.path.dirname(self.chem_file)+'/with_hex_'+ os.path.basename(self.chem_file)
-        data.to_csv(newfile,index_label='ObjectID')
-        arcpy.AddMessage(newfile)
-        arcpy.AddMessage(self.spatref)
+        newfile = os.path.dirname(self.chem_file) + '/with_hex_' + os.path.basename(self.chem_file)
+        meq_df = pd.DataFrame(meqL, columns=['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL', 'HCO3_meqL',
+                                     'CO3_meqL', 'Cl_meqL', 'SO4_meqL'])
+        data = pd.concat([data,meq_df], axis=1)
+        data = calc_totals(data)
+        data.to_csv(newfile, index_label='ID')
 
-        #arcpy.env.workspace = self.wrkspace
-        #sr = arcpy.SpatialReference(self.spatref)
+        plotfile = os.path.dirname(self.chem_file) + '/piperplot.svg'
+        plt.savefig(plotfile)
+
+
+        arcpy.AddMessage(newfile)
+
+
+        #arcpy.env.workspace = os.path.dirname(self.chem_file)
+        # sr = arcpy.SpatialReference(self.spatref)
         # Make the XY event layer...
-        arcpy.MakeXYEventLayer_management(newfile, "Latitude", "Longitude", "in_memory/temp", self.spatref,"")
+        arcpy.MakeXYEventLayer_management(newfile, "Longitude", "Latitude", "in_memory", self.spatref, "")
 
         # Print the total rows
-        arcpy.AddMessage(arcpy.GetCount_management("in_memory/temp"))
+        arcpy.AddMessage(arcpy.GetCount_management("in_memory"))
 
         # Save to a layer file
-        arcpy.CopyFeatures_management("in_memory/temp", self.savedlayer, "", "0", "0", "0")
-
+        arcpy.CopyFeatures_management("in_memory", self.savedlayer, "", "0", "0", "0")
 
 class Toolbox(object):
     def __init__(self):
@@ -343,11 +390,12 @@ class PiperTable(object):
         self.parameters = [
             parameter("Chemistry Data", "chem_file", "DEFile"),
             parameter("Spatial Reference", "spatref", "GPSpatialReference"),
-            #parameter("Workspace","wrkspace","DEWorkspace"),
+            parameter("Plot Title","plottitle","GPString"),
+            parameter("Alpha Level", "alphalevel", "GPDouble",),
             parameter("Layer output location", "savedlayer", "DEFeatureClass", direction="Output")
         ]
         self.parameters[0].filter.list = ['csv']
-
+        self.parameters[3].value = 1.0
 
     def getParameterInfo(self):
         """Define parameter definitions; http://joelmccune.com/lessons-learned-and-ideas-for-python-toolbox-coding/"""
@@ -372,7 +420,8 @@ class PiperTable(object):
         pplot = PiperPlt()
         pplot.chem_file = parameters[0].valueAsText
         pplot.spatref = parameters[1].valueAsText
-        #pplot.wrkspace = parameters[2].valueAsText
-        pplot.savedlayer = parameters[2].valueAsText
-        pplot.run_piper_plot()
+        pplot.plottitle = parameters[2].valueAsText
+        pplot.alphalevel = parameters[3].valueAsText
+        pplot.savedlayer = parameters[4].valueAsText
+        pplot.piper_plot()
         return
