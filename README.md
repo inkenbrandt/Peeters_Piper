@@ -1,5 +1,5 @@
 # Peeters_Piper
-From Peeters 2014 in Groundwater
+From Peeters 2014 in Groundwater <br>
 @article {GWAT:GWAT12118,
 author = {Peeters, Luk},
 title = {A Background Color Scheme for Piper Plots to Spatially Visualize Hydrochemical Patterns},
