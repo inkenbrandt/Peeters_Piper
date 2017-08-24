@@ -79,6 +79,10 @@ def hsvtorgb(H, S, V):
     B = B + m
     return (R, G, B)
 
+def rgb2hex(r,g,b):
+    hex = "#{:02x}{:02x}{:02x}".format(r,g,b)
+    return hex
+
 
 def piper(dat_piper, plottitle, alphalevel, color):
     '''
@@ -259,6 +263,8 @@ def piper(dat_piper, plottitle, alphalevel, color):
         return (dict(cat=cat,
                      an=an,
                      diamond=d))
+
+
 
 
 ###
