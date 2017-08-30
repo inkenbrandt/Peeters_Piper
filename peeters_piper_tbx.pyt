@@ -432,6 +432,7 @@ class PiperTable(object):
         ]
         self.parameters[0].filter.list = ['csv']
         self.parameters[3].value = 1.0
+        self.parameters[5].value = 10.0
 
     def getParameterInfo(self):
         """Define parameter definitions; http://joelmccune.com/lessons-learned-and-ideas-for-python-toolbox-coding/"""
