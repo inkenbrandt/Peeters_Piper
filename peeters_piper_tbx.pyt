@@ -276,6 +276,8 @@ class PiperPlt(object):
         self.savedlayer = None
         self.wrkspace = None
         self.alphalevel = None
+        self.scaletds = None
+        self.usetds = None
 
     def piper_plot(self):
         """
@@ -312,16 +314,15 @@ class PiperPlt(object):
         data = calc_totals(data)
 
         # https://pubs.usgs.gov/wri/1986/4124/report.pdf
+        # http://inside.mines.edu / ~epoeter / _GW / resultsNOV03.pdf
         fw = {'Ca': 40.08, 'Mg': 24.30, 'Na': 22.99, 'K': 39.10,
               'Cl': 35.45, 'HCO3': 61.02, 'CO3': 60.01, 'SO4': 96.06}
         ions = fw.keys()
 
-        data['TDScalc'] = 0
-        for row in data.index:
-            tds = {}
-            for i in ions:
-                tds[i] = data.loc[row,i]*fw[i]
-            data.loc[row,'TDScalc'] = sum(tds.values())
+        data['Alkcalc'] = data[['HCO3','CO3']].apply(lambda x: x[0]+2*x[1],1)
+        data['TDScalc'] = data[['Ca','Mg','NaK','Cl','SO4',
+                                'Alkcalc']].apply(lambda x: np.sum(x[0:-1])+0.6*x[-1],1)
+
 
         data.to_csv(newfile, index_label='ID')
 
@@ -330,7 +331,10 @@ class PiperPlt(object):
         arcpy.AddMessage(mintds)
         arcpy.AddMessage(maxtds)
 
-        tds_calc_norm = data['TDScalc'].apply(lambda x: (x-mintds)/(maxtds-mintds)*10,1)
+        if self.scaletds:
+            tds_calc_norm = data['TDScalc'].apply(lambda x: (x-mintds)/(maxtds-mintds)*self.scaletds,1)
+        else:
+            tds_calc_norm = data['TDScalc'].apply(lambda x: (x-mintds)/(maxtds-mintds)*10,1)
 
         # Basic shape of piper plot
         plottitle = self.plottitle
@@ -376,11 +380,17 @@ class PiperPlt(object):
         plt.text(2 + 3 * offset, -offset, u'$Cl^-$', horizontalalignment='right', verticalalignment='center')
 
         # plot data
+
+        if self.usetds:
+            pass
+        else:
+            tds_calc_norm = 1
+
         plt.scatter(cat_x, cat_y, s = tds_calc_norm, alpha=alphalevel)
         plt.scatter(an_x, an_y, s = tds_calc_norm, alpha=alphalevel)
         plt.scatter(d_x, d_y, alpha=alphalevel, s = tds_calc_norm )
 
-        plotfile = os.path.dirname(self.chem_file) + '/piperplot.svg'
+        plotfile = os.path.dirname(self.chem_file) + '/piperplot.pdf'
         plt.savefig(plotfile)
 
 
@@ -416,6 +426,8 @@ class PiperTable(object):
             parameter("Spatial Reference", "spatref", "GPSpatialReference"),
             parameter("Plot Title","plottitle","GPString"),
             parameter("Alpha Level", "alphalevel", "GPDouble",),
+            parameter("Use TDS for Plot?", "usetds", "GPBoolean", parameterType="Optional"),
+            parameter("TDS Scale Factor for Plot","scaletds", "GPDouble",parameterType="Optional"),
             parameter("Layer output location", "savedlayer", "DEFeatureClass", direction="Output")
         ]
         self.parameters[0].filter.list = ['csv']
@@ -446,6 +458,8 @@ class PiperTable(object):
         pplot.spatref = parameters[1].valueAsText
         pplot.plottitle = parameters[2].valueAsText
         pplot.alphalevel = parameters[3].valueAsText
-        pplot.savedlayer = parameters[4].valueAsText
+        pplot.usetds = parameters[4].value
+        pplot.scaletds = parameters[5].value
+        pplot.savedlayer = parameters[6].valueAsText
         pplot.piper_plot()
         return
