@@ -216,7 +216,6 @@ def check_nak(x):
 
 def calc_totals(df1):
 
-
     anions = ['Cl', 'HCO3', 'CO3', 'SO4']
     cations = ['Na', 'K', 'Ca', 'Mg', 'NaK']
     df1['anions'] = 0
@@ -232,7 +231,7 @@ def calc_totals(df1):
 
     df1['EC'] = df1['anions'] - df1['cations']
     df1['CBE'] = df1['EC'] / (df1['anions'] + df1['cations'])
-    df1['maj_cation'] = df1[['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL', 'NaK_meqL']].idxmax(axis=1)
+    df1['maj_cation'] = df1[['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL']].idxmax(axis=1)
     df1['maj_cation'] = df1['maj_cation'].apply(lambda x: str(x)[:-5],1)
     df1['maj_anion'] = df1[['Cl_meqL', 'SO4_meqL', 'HCO3_meqL', 'CO3_meqL']].idxmax(axis=1)
     df1['maj_anion'] = df1['maj_anion'].apply(lambda x: str(x)[:-5],1)
@@ -277,6 +276,8 @@ class PiperPlt(object):
         self.savedlayer = None
         self.wrkspace = None
         self.alphalevel = None
+        self.scaletds = None
+        self.usetds = None
 
     def piper_plot(self):
         """
@@ -298,12 +299,48 @@ class PiperPlt(object):
                     an:  [nx3] RGB triple anions
                     diamond: [nx3] RGB triple central diamond
         """
-        # Basic shape of piper plot
+
+        data = data_to_rgb(self.chem_file)
+
+        newfile = os.path.dirname(self.chem_file) + '/with_hex_' + os.path.basename(self.chem_file)
         cfile = self.chem_file
-        plottitle = self.plottitle
-        alphalevel = self.alphalevel
         dat_piper = np.loadtxt(cfile, delimiter=',', skiprows=1)
         dat_piper = dat_piper[:, 2:10]
+        cat, an, meqL = mol_convert(dat_piper)
+
+        meq_df = pd.DataFrame(meqL, columns=['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL', 'HCO3_meqL',
+                                     'CO3_meqL', 'Cl_meqL', 'SO4_meqL'])
+        data = pd.concat([data,meq_df], axis=1)
+        data = calc_totals(data)
+
+        # https://pubs.usgs.gov/wri/1986/4124/report.pdf
+        # http://inside.mines.edu / ~epoeter / _GW / resultsNOV03.pdf
+        fw = {'Ca': 40.08, 'Mg': 24.30, 'Na': 22.99, 'K': 39.10,
+              'Cl': 35.45, 'HCO3': 61.02, 'CO3': 60.01, 'SO4': 96.06}
+        ions = fw.keys()
+
+        data['Alkcalc'] = data[['HCO3','CO3']].apply(lambda x: x[0]+2*x[1],1)
+        data['TDScalc'] = data[['Ca','Mg','NaK','Cl','SO4',
+                                'Alkcalc']].apply(lambda x: np.sum(x[0:-1])+0.6*x[-1],1)
+
+
+        data.to_csv(newfile, index_label='ID')
+
+        mintds = np.min(data['TDScalc'].values)
+        maxtds = np.max(data['TDScalc'].values)
+        arcpy.AddMessage(mintds)
+        arcpy.AddMessage(maxtds)
+
+        if self.scaletds:
+            tds_calc_norm = data['TDScalc'].apply(lambda x: (x-mintds)/(maxtds-mintds)*self.scaletds,1)
+        else:
+            tds_calc_norm = data['TDScalc'].apply(lambda x: (x-mintds)/(maxtds-mintds)*10,1)
+
+        # Basic shape of piper plot
+        plottitle = self.plottitle
+        alphalevel = self.alphalevel
+
+
         offset = 0.05
         offsety = offset * np.tan(np.pi / 3)
         h = 0.5 * np.tan(np.pi / 3)
@@ -316,7 +353,7 @@ class PiperPlt(object):
 
         mpl.rcParams['pdf.fonttype'] = 42
         mpl.rcParams['ps.fonttype'] = 42
-        mpl.rcParams['svg.fonttype'] = 42
+        mpl.rcParams['svg.fonttype'] = 'none'
 
         fig = plt.figure()
         ax = fig.add_subplot(111, aspect='equal', frameon=False, xticks=[], yticks=[])
@@ -324,7 +361,7 @@ class PiperPlt(object):
         ax.plot(rtriangle_x, rtriangle_y, '-k')
         ax.plot(diamond_x, diamond_y, '-k')
 
-        cat, an, meqL = mol_convert(dat_piper)
+
         cat_x, cat_y, an_x, an_y, d_x, d_y = ion_in_cartesian(cat, an)
         s_cat, s_an, s_d, RGBA = interpolate_colors()
 
@@ -343,20 +380,17 @@ class PiperPlt(object):
         plt.text(2 + 3 * offset, -offset, u'$Cl^-$', horizontalalignment='right', verticalalignment='center')
 
         # plot data
-        plt.plot(cat_x, cat_y, '.k', alpha=alphalevel)
-        plt.plot(an_x, an_y, '.k', alpha=alphalevel)
-        plt.plot(d_x, d_y, '.k', alpha=alphalevel)
 
-        data = data_to_rgb(self.chem_file)
+        if self.usetds:
+            pass
+        else:
+            tds_calc_norm = 1
 
-        newfile = os.path.dirname(self.chem_file) + '/with_hex_' + os.path.basename(self.chem_file)
-        meq_df = pd.DataFrame(meqL, columns=['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL', 'HCO3_meqL',
-                                     'CO3_meqL', 'Cl_meqL', 'SO4_meqL'])
-        data = pd.concat([data,meq_df], axis=1)
-        data = calc_totals(data)
-        data.to_csv(newfile, index_label='ID')
+        plt.scatter(cat_x, cat_y, s = tds_calc_norm, alpha=alphalevel)
+        plt.scatter(an_x, an_y, s = tds_calc_norm, alpha=alphalevel)
+        plt.scatter(d_x, d_y, alpha=alphalevel, s = tds_calc_norm )
 
-        plotfile = os.path.dirname(self.chem_file) + '/piperplot.svg'
+        plotfile = os.path.dirname(self.chem_file) + '/piperplot.pdf'
         plt.savefig(plotfile)
 
 
@@ -392,10 +426,13 @@ class PiperTable(object):
             parameter("Spatial Reference", "spatref", "GPSpatialReference"),
             parameter("Plot Title","plottitle","GPString"),
             parameter("Alpha Level", "alphalevel", "GPDouble",),
+            parameter("Use TDS for Plot?", "usetds", "GPBoolean", parameterType="Optional"),
+            parameter("TDS Scale Factor for Plot","scaletds", "GPDouble",parameterType="Optional"),
             parameter("Layer output location", "savedlayer", "DEFeatureClass", direction="Output")
         ]
         self.parameters[0].filter.list = ['csv']
         self.parameters[3].value = 1.0
+        self.parameters[5].value = 10.0
 
     def getParameterInfo(self):
         """Define parameter definitions; http://joelmccune.com/lessons-learned-and-ideas-for-python-toolbox-coding/"""
@@ -422,6 +459,8 @@ class PiperTable(object):
         pplot.spatref = parameters[1].valueAsText
         pplot.plottitle = parameters[2].valueAsText
         pplot.alphalevel = parameters[3].valueAsText
-        pplot.savedlayer = parameters[4].valueAsText
+        pplot.usetds = parameters[4].value
+        pplot.scaletds = parameters[5].value
+        pplot.savedlayer = parameters[6].valueAsText
         pplot.piper_plot()
         return
