@@ -469,7 +469,7 @@ class PiperPlt(object):
         if 'ID' not in data.columns:
             data['ID'] = data.index
 
-        ann = ["{:} Ca: {:}\nMg: {:}\nNaK: {:}\nCl: {:}\nSO4: {:}\nHCO3: {:}\nCO3: {:}".format(data.loc[i,'ID'],
+        ann = ["{:} Ca: {:.2f}\nMg: {:.2f}\nNaK: {:.2f}\nCl: {:.2f}\nSO4: {:.2f}\nHCO3: {:.2f}\nCO3: {:.2f}".format(data.loc[i,'ID'],
                                                                                                data.loc[i,'Ca'],
                                                                                            data.loc[i,'Mg'],
                                                                                            data.loc[i,'NaK'],
@@ -534,6 +534,7 @@ class PiperTable(object):
         self.parameters = [
             parameter("Chemistry Data", "chem_file", "DEFile"),
             parameter("Spatial Reference", "spatref", "GPSpatialReference"),
+            parameter("Matches for Table Headers", "head_names", 'GPValueTable'),
             parameter("Plot Title","plottitle","GPString"),
             parameter("Alpha Level", "alphalevel", "GPDouble",),
             parameter("Use TDS for Plot?", "usetds", "GPBoolean", parameterType="Optional"),
@@ -541,8 +542,9 @@ class PiperTable(object):
             parameter("Layer output location", "savedlayer", "DEFeatureClass", direction="Output")
         ]
         self.parameters[0].filter.list = ['csv']
-        self.parameters[3].value = 1.0
-        self.parameters[5].value = 10.0
+        self.parameters[2].columns = [['GPString', 'Table Column'], ['GPString', 'Matching Parameter']]
+        self.parameters[4].value = 1.0
+        self.parameters[5].value = 50.0
 
     def getParameterInfo(self):
         """Define parameter definitions; http://joelmccune.com/lessons-learned-and-ideas-for-python-toolbox-coding/"""
@@ -555,6 +557,23 @@ class PiperTable(object):
     def updateParameters(self, parameters):
         """Modify the values and properties of parameters before internal validation is performed.
         This method is called whenever a parameter has been changed."""
+        if parameters[1].value and parameters[0].value and arcpy.Exists(parameters[1].value):
+            if not parameters[3].altered:
+                # use a search cursor to iterate rows
+                csvtable = pd.read_csv(parameters[0].valueAsText)
+                table_cols = list(csvtable.columns)
+                parm_fields = ['Ca','Mg','Na','NaK','SO4','Cl','HCO3','CO3','X','Y','ID']
+                vtab = []
+                for col in table_cols:
+                    for parm in parm_fields:
+                        if col in parm:
+                            vtab.append([parm, col])
+                        else:
+                            vtab.append([col, None])
+
+                parameters[2].values = vtab
+
+                parameters[2].filters[1].list = sorted(parm_fields)
 
         return
 
