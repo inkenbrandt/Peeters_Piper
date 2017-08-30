@@ -8,6 +8,82 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import scipy.interpolate as interpolate
 import pandas as pd
+import math
+
+class AnnoteFinder(object):
+    """callback for matplotlib to display an annotation when points are
+    clicked on.  The point which is closest to the click and within
+    xtol and ytol is identified.
+
+    Register this function like this:
+
+    scatter(xdata, ydata)
+    af = AnnoteFinder(xdata, ydata, annotes)
+    connect('button_press_event', af)
+    """
+
+    def __init__(self, xdata, ydata, annotes, ax=None, xtol=5, ytol=5):
+        self.data = list(zip(xdata, ydata, annotes))
+        if xtol is None:
+            xtol = ((max(xdata) - min(xdata)) / float(len(xdata))) / 2
+        if ytol is None:
+            ytol = ((max(ydata) - min(ydata)) / float(len(ydata))) / 2
+        self.xtol = xtol
+        self.ytol = ytol
+        if ax is None:
+            self.ax = plt.gca()
+        else:
+            self.ax = ax
+        self.drawnAnnotations = {}
+        self.links = []
+
+    def distance(self, x1, x2, y1, y2):
+        """
+        return the distance between two points
+        """
+        return (math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2))
+
+    def __call__(self, event):
+
+        if event.inaxes:
+
+            clickX = event.xdata
+            clickY = event.ydata
+            if (self.ax is None) or (self.ax is event.inaxes):
+                annotes = []
+                # print(event.xdata, event.ydata)
+                for x, y, a in self.data:
+                    # print(x, y, a)
+                    if ((clickX - self.xtol < x < clickX + self.xtol) and
+                            (clickY - self.ytol < y < clickY + self.ytol)):
+                        annotes.append(
+                            (self.distance(x, clickX, y, clickY), x, y, a))
+                if annotes:
+                    annotes.sort()
+                    distance, x, y, annote = annotes[0]
+                    self.drawAnnote(event.inaxes, x, y, annote)
+                    for l in self.links:
+                        l.drawSpecificAnnote(annote)
+
+    def drawAnnote(self, ax, x, y, annote):
+        """
+        Draw the annotation on the plot
+        """
+        if (x, y) in self.drawnAnnotations:
+            markers = self.drawnAnnotations[(x, y)]
+            for m in markers:
+                m.set_visible(not m.get_visible())
+            self.ax.figure.canvas.draw_idle()
+        else:
+            t = ax.text(x, y, " - %s" % (annote), )
+            m = ax.scatter([x], [y], marker='d', c='r', zorder=100)
+            self.drawnAnnotations[(x, y)] = (t, m)
+            self.ax.figure.canvas.draw_idle()
+
+    def drawSpecificAnnote(self, annote):
+        annotesToDraw = [(x, y, a) for x, y, a in self.data if a == annote]
+        for x, y, a in annotesToDraw:
+            self.drawAnnote(self.ax, x, y, a)
 
 
 # Define plotting functions hsvtorgb and piper
@@ -222,6 +298,7 @@ def calc_totals(df1):
     df1['cations'] = 0
     df1['NaK_meqL'] = 0
     df1['NaK_meqL'] = df1[['Na_meqL', 'K_meqL', 'NaK_meqL']].apply(lambda x: check_nak(x), 1)
+    df1['NaK'] = df1['NaK_meqL']*23.0
     for ion in anions:
         if ion in df1.columns:
             df1['anions'] += df1[ion + '_meqL']
@@ -266,6 +343,12 @@ def parameter(displayName, name, datatype, parameterType='Required', direction='
 
     # return complete parameter object
     return param
+
+
+def linkAnnotationFinders(afs):
+    for i in range(len(afs)):
+        allButSelfAfs = afs[:i] + afs[i + 1:]
+        afs[i].links.extend(allButSelfAfs)
 
 # Load data
 class PiperPlt(object):
@@ -315,13 +398,10 @@ class PiperPlt(object):
 
         # https://pubs.usgs.gov/wri/1986/4124/report.pdf
         # http://inside.mines.edu / ~epoeter / _GW / resultsNOV03.pdf
-        fw = {'Ca': 40.08, 'Mg': 24.30, 'Na': 22.99, 'K': 39.10,
-              'Cl': 35.45, 'HCO3': 61.02, 'CO3': 60.01, 'SO4': 96.06}
-        ions = fw.keys()
+
 
         data['Alkcalc'] = data[['HCO3','CO3']].apply(lambda x: x[0]+2*x[1],1)
-        data['TDScalc'] = data[['Ca','Mg','NaK','Cl','SO4',
-                                'Alkcalc']].apply(lambda x: np.sum(x[0:-1])+0.6*x[-1],1)
+        data['TDScalc'] = data[['Ca','Mg','NaK','Cl','SO4','Alkcalc']].apply(lambda x: np.sum(x[0:-1])+0.6*x[-1],1)
 
 
         data.to_csv(newfile, index_label='ID')
@@ -386,13 +466,35 @@ class PiperPlt(object):
         else:
             tds_calc_norm = 1
 
+        if 'ID' not in data.columns:
+            data['ID'] = data.index
+
+        ann = ["{:} Ca: {:}\nMg: {:}\nNaK: {:}\nCl: {:}\nSO4: {:}\nHCO3: {:}\nCO3: {:}".format(data.loc[i,'ID'],
+                                                                                               data.loc[i,'Ca'],
+                                                                                           data.loc[i,'Mg'],
+                                                                                           data.loc[i,'NaK'],
+                                                                                           data.loc[i,'Cl'],
+                                                                                           data.loc[i,'SO4'],
+                                                                                           data.loc[i,'HCO3'],
+                                                                                           data.loc[i,'CO3']) for i in data.index]
+
+
+        #http://scipy-cookbook.readthedocs.io/items/Matplotlib_Interactive_Plotting.html
+
         plt.scatter(cat_x, cat_y, s = tds_calc_norm, alpha=alphalevel)
+        af1 = AnnoteFinder(cat_x, cat_y, ann)
+        plt.connect('button_press_event', af1)
         plt.scatter(an_x, an_y, s = tds_calc_norm, alpha=alphalevel)
+        af2 = AnnoteFinder(an_x, an_y, ann)
+        plt.connect('button_press_event', af2)
         plt.scatter(d_x, d_y, alpha=alphalevel, s = tds_calc_norm )
+        af3 = AnnoteFinder(d_x, d_y, ann)
+        plt.connect('button_press_event', af3)
+        linkAnnotationFinders([af1, af2, af3])
 
         plotfile = os.path.dirname(self.chem_file) + '/piperplot.pdf'
         plt.savefig(plotfile)
-
+        plt.show()
 
         arcpy.AddMessage(newfile)
 
