@@ -494,7 +494,7 @@ class PiperPlt(object):
 
         plotfile = os.path.dirname(self.chem_file) + '/piperplot.pdf'
         plt.savefig(plotfile)
-        plt.show()
+
 
         arcpy.AddMessage(newfile)
 
@@ -509,6 +509,14 @@ class PiperPlt(object):
 
         # Save to a layer file
         arcpy.CopyFeatures_management("in_memory", self.savedlayer, "", "0", "0", "0")
+
+        plt.show()
+
+        # select by location
+        # myPt = arcpy.Point((df.extent.XMax + df.extent.XMin) / 2, (df.extent.YMax + df.extent.YMin) / 2)
+        #myPtGeometry = arcpy.PointGeometry(myPt)
+        #arcpy.SelectLayerByLocation_management(DOQQImport, "COMPLETELY_CONTAINS", myPtGeometry)
+
 
 class Toolbox(object):
     def __init__(self):
