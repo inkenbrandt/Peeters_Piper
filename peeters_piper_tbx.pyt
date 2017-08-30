@@ -22,7 +22,7 @@ class AnnoteFinder(object):
     connect('button_press_event', af)
     """
 
-    def __init__(self, xdata, ydata, annotes, ax=None, xtol=5, ytol=5):
+    def __init__(self, xdata, ydata, annotes, ax=None, xtol=.01, ytol=.01):
         self.data = list(zip(xdata, ydata, annotes))
         if xtol is None:
             xtol = ((max(xdata) - min(xdata)) / float(len(xdata))) / 2
