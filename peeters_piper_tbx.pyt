@@ -289,6 +289,28 @@ def check_nak(x):
         return x[0] + x[1]
 
 
+def fillMissing(df):
+    fieldnames = [u'Na', u'K', u'NaK', u'Ca', u'Mg', u'Cl', u'HCO3', u'CO3', u'SO4']
+    # fill in nulls with 0
+    for col in df.columns:
+        if col in fieldnames:
+            for i in range(len(df)):
+                if df.loc[i, col] is None or df.loc[i, col] == '' or np.isnan(df.loc[i, col]):
+                    df.loc[i, col] = 0
+        else:
+            df.col = 0
+
+    # add missing columns
+    for name in fieldnames:
+        if name in df.columns:
+            pass
+        else:
+            print(name)
+            df[name] = 0
+
+    return df
+
+
 def calc_totals(df1):
 
     anions = ['Cl', 'HCO3', 'CO3', 'SO4']
@@ -298,12 +320,10 @@ def calc_totals(df1):
     df1['NaK_meqL'] = 0
     df1['NaK_meqL'] = df1[['Na_meqL', 'K_meqL', 'NaK_meqL']].apply(lambda x: check_nak(x), 1)
     df1['NaK'] = df1['NaK_meqL']*23.0
-    for ion in anions:
-        if ion in df1.columns:
-            df1['anions'] += df1[ion + '_meqL']
-    for ion in cations:
-        if ion in df1.columns:
-            df1['cations'] += df1[ion + '_meqL']
+    meq_an = [an+'_meqL' for an in anions]
+    meq_cat = [cat+'_meqL' for cat in cations]
+    df1['anions'] = df1[meq_an].sum(axis=1)
+    df1['cations'] = df1[meq_cat].sum(axis=1)
 
     df1['EC'] = df1['anions'] - df1['cations']
     df1['CBE'] = df1['EC'] / (df1['anions'] + df1['cations'])
@@ -314,7 +334,40 @@ def calc_totals(df1):
     df1['water_type'] = df1[['maj_cation', 'maj_anion']].apply(lambda x: str(x[0]) + '-' + str(x[1]), 1)
     return df1
 
+def get_field_names(table):
+    read_descr = arcpy.Describe(table)
+    field_names = []
+    for field in read_descr.fields:
+        field_names.append(field.name)
+    field_names.remove('OBJECTID')
+    return field_names
 
+def get_spatial_reference(table):
+    return arcpy.Describe(table).spatialReference
+
+
+def table_to_pandas_dataframe(table, field_names=None, query=None, sql_sn=(None, None)):
+    """
+    Load data into a Pandas Data Frame for subsequent analysis.
+    :param table: Table readable by ArcGIS.
+    :param field_names: List of fields.
+    :return: Pandas DataFrame object.
+    """
+    # if field names are not specified
+    if not field_names:
+        field_names = get_field_names(table)
+    # create a pandas data frame
+    df = pd.DataFrame(columns=field_names)
+
+    # use a search cursor to iterate rows
+    with arcpy.da.SearchCursor(table, field_names, query, sql_clause=sql_sn) as search_cursor:
+        # iterate the rows
+        for row in search_cursor:
+            # combine the field names and row items together, and append them
+            df = df.append(dict(zip(field_names, row)), ignore_index=True)
+
+    # return the pandas data frame
+    return df
 
 def data_to_rgb(df_input):
     data = df_input
@@ -353,6 +406,7 @@ def linkAnnotationFinders(afs):
 class PiperPlt(object):
     def __init__(self):
         self.chem_file = None
+        self.chem_df = None
         self.plottitle = "Piper"
         self.spatref = None
         self.savedlayer = None
@@ -389,13 +443,14 @@ class PiperPlt(object):
         header_lookup = dict(zip(inputdata,tablehead))
         input_lookup = dict(zip(tablehead,inputdata))
 
-        df_input = pd.read_csv(self.chem_file)
+        df_input = self.chem_df
         df_input = df_input.rename(columns = input_lookup)
+        df_input = fillMissing(df_input)
         dat_piper = df_input[['Ca','Mg','Na','K','HCO3','CO3','Cl','SO4']].values
 
         data = data_to_rgb(df_input)
 
-        newfile = os.path.dirname(self.chem_file) + '/with_hex_' + os.path.basename(self.chem_file)
+        newfile = os.path.dirname(self.chem_file) + '/with_hex_' + os.path.splitext(os.path.basename(self.chem_file))[0] + ".csv"
 
         cat, an, meqL = mol_convert(dat_piper)
 
@@ -466,6 +521,7 @@ class PiperPlt(object):
         plt.text(1.5 + 2 * offset, h + offset, u'$SO_4^{2-}$', horizontalalignment='center', verticalalignment='center')
         plt.text(2 + 3 * offset, -offset, u'$Cl^-$', horizontalalignment='right', verticalalignment='center')
 
+
         # plot data
 
         if self.usetds:
@@ -531,11 +587,11 @@ class Toolbox(object):
         self.alias = "PeetersPiper"
 
         # List of tool classes associated with this toolbox
-        self.tools = [PiperTable]
+        self.tools = [PiperTable,PiperTableFromLayer]
 
 class PiperTable(object):
     def __init__(self):
-        self.label = "Symbolize Points with data"
+        self.label = "Plot Piper and Points from CSV"
         self.description = """Create Color Table From File """
         self.canRunInBackground = False
         self.parameters = [
@@ -592,6 +648,7 @@ class PiperTable(object):
     def execute(self, parameters, messages):
         pplot = PiperPlt()
         pplot.chem_file = parameters[0].valueAsText
+        pplot.chem_df = pd.read_csv(parameters[0].valueAsText)
         pplot.spatref = parameters[1].valueAsText
         pplot.parm_matches = parameters[2].value
 
@@ -600,5 +657,74 @@ class PiperTable(object):
         pplot.usetds = parameters[5].value
         pplot.scaletds = parameters[6].value
         pplot.savedlayer = parameters[7].valueAsText
+        pplot.piper_plot()
+        return
+
+class PiperTableFromLayer(object):
+    def __init__(self):
+        self.label = "Plot Piper from Layer"
+        self.description = """Create Color Table From File """
+        self.canRunInBackground = False
+        self.parameters = [
+            parameter("Input Feature", "in_layer", "GPFeatureLayer"),
+            parameter("Matches for Table Headers", "head_names", 'GPValueTable'),
+            parameter("Plot Title","plottitle","GPString",parameterType="Optional"),
+            parameter("Alpha Level", "alphalevel", "GPDouble",),
+            parameter("Use TDS for Plot?", "usetds", "GPBoolean", parameterType="Optional"),
+            parameter("TDS Scale Factor for Plot","scaletds", "GPDouble",parameterType="Optional"),
+            parameter("Layer output location", "savedlayer", "DEFeatureClass", direction="Output")
+        ]
+        self.parameters[0].filter.list = ['csv']
+        self.parameters[1].columns = [['GPString', 'Plot Parameter'], ['GPString', 'Table Column']]
+        self.parameters[2].value = 'Piper Plot'
+        self.parameters[3].value = 1.0
+        self.parameters[5].value = 50.0
+
+    def getParameterInfo(self):
+        """Define parameter definitions; http://joelmccune.com/lessons-learned-and-ideas-for-python-toolbox-coding/"""
+        return self.parameters
+
+    def isLicensed(self):
+        """Set whether tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal validation is performed.
+        This method is called whenever a parameter has been changed."""
+        if parameters[0].value and arcpy.Exists(parameters[0].value):
+            if not parameters[1].altered:
+                # use a search cursor to iterate rows
+                csvtable = table_to_pandas_dataframe(parameters[0].valueAsText)
+                table_cols = list(csvtable.columns)
+                parm_fields = ['Ca','Mg','Na','NaK','SO4','Cl','HCO3','CO3','X','Y','ID']
+                vtab = []
+                for parm in parm_fields:
+                    if parm in table_cols:
+                        vtab.append([parm, parm])
+                    else:
+                        vtab.append([parm, None])
+
+                parameters[1].values = vtab
+
+                parameters[1].filters[1].list = sorted(table_cols)
+
+        return
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter.  This method is called after internal validation."""
+        return
+
+    def execute(self, parameters, messages):
+        pplot = PiperPlt()
+        pplot.chem_file = parameters[0].valueAsText
+        pplot.chem_df = table_to_pandas_dataframe(parameters[0].valueAsText)
+        pplot.spatref = get_spatial_reference(parameters[0].valueAsText)
+        pplot.parm_matches = parameters[1].value
+        pplot.plottitle = parameters[2].valueAsText
+        pplot.alphalevel = parameters[3].valueAsText
+        pplot.usetds = parameters[4].value
+        pplot.scaletds = parameters[5].value
+        pplot.savedlayer = parameters[6].valueAsText
         pplot.piper_plot()
         return
