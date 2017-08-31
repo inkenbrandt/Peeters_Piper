@@ -3,7 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/Peeters_Piper.iml" filepath="$PROJECT_DIR$/.idea/Peeters_Piper.iml" />
-      <module fileurl="file://C:\Users\User2\Documents\GitHub\loggerloader\.idea\loggerloader.iml" filepath="C:\Users\User2\Documents\GitHub\loggerloader\.idea\loggerloader.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../../User2/Documents/GitHub/loggerloader/.idea/loggerloader.iml" filepath="$PROJECT_DIR$/../../../User2/Documents/GitHub/loggerloader/.idea/loggerloader.iml" />
     </modules>
   </component>
 </project>

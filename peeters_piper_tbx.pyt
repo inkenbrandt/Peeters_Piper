@@ -247,9 +247,8 @@ def interpolate_colors(offset=0.05):
     return s_cat, s_an, s_d, RGBA
 
 
-def piper(cfile):
-    dat_piper = np.loadtxt(cfile, delimiter=',', skiprows=1)
-    dat_piper = dat_piper[:, 2:10]
+def piper(df_input):
+    dat_piper = df_input[['Ca', 'Mg', 'Na', 'K', 'HCO3', 'CO3', 'Cl', 'SO4']].values
     cat, an, meqL = mol_convert(dat_piper)
 
     offset = 0.05
@@ -317,9 +316,9 @@ def calc_totals(df1):
 
 
 
-def data_to_rgb(file):
-    data = pd.read_csv(file)
-    rgb = piper(file)
+def data_to_rgb(df_input):
+    data = df_input
+    rgb = piper(df_input)
 
     data['cat_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['cat']]
     data['an_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['an']]
@@ -389,14 +388,15 @@ class PiperPlt(object):
         tablehead = [i[1] for i in self.parm_matches]
         header_lookup = dict(zip(inputdata,tablehead))
         input_lookup = dict(zip(tablehead,inputdata))
-        arcpy.AddMessage(header_lookup)
 
-        data = data_to_rgb(self.chem_file)
+        df_input = pd.read_csv(self.chem_file)
+        df_input = df_input.rename(columns = input_lookup)
+        dat_piper = df_input[['Ca','Mg','Na','K','HCO3','CO3','Cl','SO4']].values
+
+        data = data_to_rgb(df_input)
 
         newfile = os.path.dirname(self.chem_file) + '/with_hex_' + os.path.basename(self.chem_file)
-        cfile = self.chem_file
-        dat_piper = np.loadtxt(cfile, delimiter=',', skiprows=1)
-        dat_piper = dat_piper[:, 2:10]
+
         cat, an, meqL = mol_convert(dat_piper)
 
         meq_df = pd.DataFrame(meqL, columns=['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL', 'HCO3_meqL',
@@ -510,7 +510,7 @@ class PiperPlt(object):
         #arcpy.env.workspace = os.path.dirname(self.chem_file)
         # sr = arcpy.SpatialReference(self.spatref)
         # Make the XY event layer...
-        arcpy.MakeXYEventLayer_management(newfile, header_lookup["X"], header_lookup["Y"], "in_memory", self.spatref, "")
+        arcpy.MakeXYEventLayer_management(newfile, "X", "Y", "in_memory", self.spatref, "")
 
         # Print the total rows
         arcpy.AddMessage(arcpy.GetCount_management("in_memory"))
