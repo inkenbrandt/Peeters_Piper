@@ -449,7 +449,6 @@ class PiperPlt(object):
         ax.plot(rtriangle_x, rtriangle_y, '-k')
         ax.plot(diamond_x, diamond_y, '-k')
 
-
         cat_x, cat_y, an_x, an_y, d_x, d_y = ion_in_cartesian(cat, an)
         s_cat, s_an, s_d, RGBA = interpolate_colors()
 
