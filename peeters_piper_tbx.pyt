@@ -361,6 +361,7 @@ class PiperPlt(object):
         self.alphalevel = None
         self.scaletds = None
         self.usetds = None
+        self.parm_matches = None
 
     def piper_plot(self):
         """
@@ -382,6 +383,13 @@ class PiperPlt(object):
                     an:  [nx3] RGB triple anions
                     diamond: [nx3] RGB triple central diamond
         """
+
+        # make a dict of header and assigned parameter names for matching later
+        inputdata = [i[0] for i in self.parm_matches]
+        tablehead = [i[1] for i in self.parm_matches]
+        header_lookup = dict(zip(inputdata,tablehead))
+        input_lookup = dict(zip(tablehead,inputdata))
+        arcpy.AddMessage(header_lookup)
 
         data = data_to_rgb(self.chem_file)
 
@@ -502,7 +510,7 @@ class PiperPlt(object):
         #arcpy.env.workspace = os.path.dirname(self.chem_file)
         # sr = arcpy.SpatialReference(self.spatref)
         # Make the XY event layer...
-        arcpy.MakeXYEventLayer_management(newfile, "Longitude", "Latitude", "in_memory", self.spatref, "")
+        arcpy.MakeXYEventLayer_management(newfile, header_lookup["X"], header_lookup["Y"], "in_memory", self.spatref, "")
 
         # Print the total rows
         arcpy.AddMessage(arcpy.GetCount_management("in_memory"))
@@ -535,16 +543,17 @@ class PiperTable(object):
             parameter("Chemistry Data", "chem_file", "DEFile"),
             parameter("Spatial Reference", "spatref", "GPSpatialReference"),
             parameter("Matches for Table Headers", "head_names", 'GPValueTable'),
-            parameter("Plot Title","plottitle","GPString"),
+            parameter("Plot Title","plottitle","GPString",parameterType="Optional"),
             parameter("Alpha Level", "alphalevel", "GPDouble",),
             parameter("Use TDS for Plot?", "usetds", "GPBoolean", parameterType="Optional"),
             parameter("TDS Scale Factor for Plot","scaletds", "GPDouble",parameterType="Optional"),
             parameter("Layer output location", "savedlayer", "DEFeatureClass", direction="Output")
         ]
         self.parameters[0].filter.list = ['csv']
-        self.parameters[2].columns = [['GPString', 'Table Column'], ['GPString', 'Matching Parameter']]
+        self.parameters[2].columns = [['GPString', 'Plot Parameter'], ['GPString', 'Table Column']]
+        self.parameters[3].value = 'Piper Plot'
         self.parameters[4].value = 1.0
-        self.parameters[5].value = 50.0
+        self.parameters[6].value = 50.0
 
     def getParameterInfo(self):
         """Define parameter definitions; http://joelmccune.com/lessons-learned-and-ideas-for-python-toolbox-coding/"""
@@ -557,23 +566,22 @@ class PiperTable(object):
     def updateParameters(self, parameters):
         """Modify the values and properties of parameters before internal validation is performed.
         This method is called whenever a parameter has been changed."""
-        if parameters[1].value and parameters[0].value and arcpy.Exists(parameters[1].value):
-            if not parameters[3].altered:
+        if parameters[1].value and arcpy.Exists(parameters[0].value):
+            if not parameters[2].altered:
                 # use a search cursor to iterate rows
                 csvtable = pd.read_csv(parameters[0].valueAsText)
                 table_cols = list(csvtable.columns)
                 parm_fields = ['Ca','Mg','Na','NaK','SO4','Cl','HCO3','CO3','X','Y','ID']
                 vtab = []
-                for col in table_cols:
-                    for parm in parm_fields:
-                        if col in parm:
-                            vtab.append([parm, col])
-                        else:
-                            vtab.append([col, None])
+                for parm in parm_fields:
+                    if parm in table_cols:
+                        vtab.append([parm, parm])
+                    else:
+                        vtab.append([parm, None])
 
                 parameters[2].values = vtab
 
-                parameters[2].filters[1].list = sorted(parm_fields)
+                parameters[2].filters[1].list = sorted(table_cols)
 
         return
 
@@ -586,10 +594,12 @@ class PiperTable(object):
         pplot = PiperPlt()
         pplot.chem_file = parameters[0].valueAsText
         pplot.spatref = parameters[1].valueAsText
-        pplot.plottitle = parameters[2].valueAsText
-        pplot.alphalevel = parameters[3].valueAsText
-        pplot.usetds = parameters[4].value
-        pplot.scaletds = parameters[5].value
-        pplot.savedlayer = parameters[6].valueAsText
+        pplot.parm_matches = parameters[2].value
+
+        pplot.plottitle = parameters[3].valueAsText
+        pplot.alphalevel = parameters[4].valueAsText
+        pplot.usetds = parameters[5].value
+        pplot.scaletds = parameters[6].value
+        pplot.savedlayer = parameters[7].valueAsText
         pplot.piper_plot()
         return
