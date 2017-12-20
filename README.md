@@ -1,4 +1,7 @@
 # Peeters_Piper
+ArcGIS Python Toolbox that plots a piper diagram of water chemisty.
+
+
 From Peeters 2014 in Groundwater <br>
 ``` bibtex
 @article {GWAT:GWAT12118,
