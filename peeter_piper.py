@@ -2,7 +2,7 @@
 Code from
 @article {GWAT:GWAT12118,
 author = {Peeters, Luk},
-title = {A Background Color Scheme for Piper Plots to Spatially Visualize Hydrochemical Patterns},
+title = {A Background use_color Scheme for Piper Plots to Spatially Visualize Hydrochemical Patterns},
 journal = {Groundwater},
 volume = {52},
 number = {1},
@@ -27,7 +27,7 @@ import scipy.interpolate as interpolate
 # Define plotting functions hsvtorgb and piper
 def hsvtorgb(H, S, V):
     '''
-    Converts hsv colorspace to rgb
+    Converts hsv use_colorspace to rgb
     INPUT:
         H: [mxn] matrix of hue ( between 0 and 2pi )
         S: [mxn] matrix of saturation ( between 0 and 1 )
@@ -84,26 +84,48 @@ def rgb2hex(r,g,b):
     return hex
 
 
-def piper(dat_piper, plottitle, alphalevel, color):
-    '''
-    Create a Piper plot
-    INPUT:
-        dat_piper: [nx8] matrix, chemical analysis in mg/L
-                    order: Ca Mg Na K HCO3 CO3 Cl SO4
-        plottitle: string with title of Piper plot
-        alphalevel: transparency level of points. If 1, points are opaque
-        color: boolean, use background coloring of Piper plot
-    OUTPUT:
-        figure with piperplot
-        dictionary with:
-            if color = False:
+def piper(arrays, plottitle, use_color, fig=None, **kwargs):
+    '''Create a Piper plot:
+
+    Args:
+        arrays (ndarray, or see below): n x 8 ndarray with columns corresponding
+            to Ca Mg Na K HCO3 CO3 Cl SO4 data. See below for a different format
+            for this argument if you want to plot different subsets of data with
+            different marker styles.
+        plottitle (str): title of Piper plot
+        use_color (bool): use background use_coloring of Piper plot
+        fig (Figure): matplotlib Figure to use, one will be created if None
+
+    If you would like to plot different sets of data e.g. from different aquifers
+    with different marker styles, you can pass a list of tuples as the first
+    arguments. The first item of each tuple should be an n x 8 ndarray, as usual.
+    The second item should be a dictionary of keyword arguments to ``plt.scatter``.
+    Any keyword arguments for ``plt.scatter`` that are in common to all the 
+    subsets can be passed to the ``piper()`` function directly. By default the
+    markers are plotted with: ``plt.scatter(..., marker=".", color="k", alpha=1)``.
+    
+    Returns a dictionary with:
+            if use_color = False:
                 cat: [nx3] meq% of cations, order: Ca Mg Na+K
                 an:  [nx3] meq% of anions,  order: HCO3+CO3 SO4 Cl
-            if color = True:
+            if use_color = True:
                 cat: [nx3] RGB triple cations
                 an:  [nx3] RGB triple anions
                 diamond: [nx3] RGB triple central diamond
     '''
+    kwargs["marker"] = kwargs.get("marker", ".")
+    kwargs["alpha"] = kwargs.get("alpha", 1)
+    kwargs["facecolor"] = kwargs.get("facecolor", "k")
+
+    try:
+        shp = arrays.shape
+        if shp[1] == 8:
+            arrays = [(arrays, {})]
+    except:
+        pass
+
+    if fig is None:
+        fig = plt.figure()
     # Basic shape of piper plot
     offset = 0.05
     offsety = offset * np.tan(np.pi / 3)
@@ -114,7 +136,7 @@ def piper(dat_piper, plottitle, alphalevel, color):
     rtriangle_y = ltriangle_y
     diamond_x = np.array([0.5, 1, 1.5, 1, 0.5]) + offset
     diamond_y = h * (np.array([1, 2, 1, 0, 1])) + (offset * np.tan(np.pi / 3))
-    fig = plt.figure()
+
     ax = fig.add_subplot(111, aspect='equal', frameon=False, xticks=[], yticks=[])
     ax.plot(ltriangle_x, ltriangle_y, '-k')
     ax.plot(rtriangle_x, rtriangle_y, '-k')
@@ -131,40 +153,43 @@ def piper(dat_piper, plottitle, alphalevel, color):
     # Convert chemistry into plot coordinates
     gmol = np.array([40.078, 24.305, 22.989768, 39.0983, 61.01714, 60.0092, 35.4527, 96.0636])
     eqmol = np.array([2., 2., 1., 1., 1., 2., 1., 2.])
-    n = dat_piper.shape[0]
-    meqL = (dat_piper / gmol) * eqmol
-    sumcat = np.sum(meqL[:, 0:4], axis=1)
-    suman = np.sum(meqL[:, 4:8], axis=1)
-    cat = np.zeros((n, 3))
-    an = np.zeros((n, 3))
-    cat[:, 0] = meqL[:, 0] / sumcat  # Ca
-    cat[:, 1] = meqL[:, 1] / sumcat  # Mg
-    cat[:, 2] = (meqL[:, 2] + meqL[:, 3]) / sumcat  # Na+K
-    an[:, 0] = (meqL[:, 4] + meqL[:, 5]) / suman  # HCO3 + CO3
-    an[:, 2] = meqL[:, 6] / suman  # Cl
-    an[:, 1] = meqL[:, 7] / suman  # SO4
+    for dat_piper, plt_kws in arrays:
+        n = dat_piper.shape[0]
+        meqL = (dat_piper / gmol) * eqmol
+        sumcat = np.sum(meqL[:, 0:4], axis=1)
+        suman = np.sum(meqL[:, 4:8], axis=1)
+        cat = np.zeros((n, 3))
+        an = np.zeros((n, 3))
+        cat[:, 0] = meqL[:, 0] / sumcat  # Ca
+        cat[:, 1] = meqL[:, 1] / sumcat  # Mg
+        cat[:, 2] = (meqL[:, 2] + meqL[:, 3]) / sumcat  # Na+K
+        an[:, 0] = (meqL[:, 4] + meqL[:, 5]) / suman  # HCO3 + CO3
+        an[:, 2] = meqL[:, 6] / suman  # Cl
+        an[:, 1] = meqL[:, 7] / suman  # SO4
 
-    # Convert into cartesian coordinates
-    cat_x = 0.5 * (2 * cat[:, 2] + cat[:, 1])
-    cat_y = h * cat[:, 1]
-    an_x = 1 + 2 * offset + 0.5 * (2 * an[:, 2] + an[:, 1])
-    an_y = h * an[:, 1]
-    d_x = an_y / (4 * h) + 0.5 * an_x - cat_y / (4 * h) + 0.5 * cat_x
-    d_y = 0.5 * an_y + h * an_x + 0.5 * cat_y - h * cat_x
+        # Convert into cartesian coordinates
+        cat_x = 0.5 * (2 * cat[:, 2] + cat[:, 1])
+        cat_y = h * cat[:, 1]
+        an_x = 1 + 2 * offset + 0.5 * (2 * an[:, 2] + an[:, 1])
+        an_y = h * an[:, 1]
+        d_x = an_y / (4 * h) + 0.5 * an_x - cat_y / (4 * h) + 0.5 * cat_x
+        d_y = 0.5 * an_y + h * an_x + 0.5 * cat_y - h * cat_x
 
-    # plot data
-    plt.plot(cat_x, cat_y, '.k', alpha=alphalevel)
-    plt.plot(an_x, an_y, '.k', alpha=alphalevel)
-    plt.plot(d_x, d_y, '.k', alpha=alphalevel)
+        # plot data
+        kws = dict(kwargs)
+        kws.update(plt_kws)
+        plt.scatter(cat_x, cat_y, **kws)
+        plt.scatter(an_x, an_y, **{k:v for k, v in kws.items() if not k == "label"})
+        plt.scatter(d_x, d_y, **{k:v for k, v in kws.items() if not k == "label"})
 
-    # color coding Piper plot
-    if color == False:
-        # add density color bar if alphalevel < 1
-        if alphalevel < 1.0:
+    # use_color coding Piper plot
+    if use_color == False:
+        # add density use_color bar if alphalevel < 1
+        if kwargs.get("alpha", 1) < 1.0:
             ax1 = fig.add_axes([0.75, 0.4, 0.01, 0.2])
             cmap = plt.cm.gray_r
-            norm = mpl.colors.Normalize(vmin=0, vmax=1 / alphalevel)
-            cb1 = mpl.colorbar.ColorbarBase(ax1, cmap=cmap,
+            norm = mpl.use_colors.Normalize(vmin=0, vmax=1 / kwargs["alpha"])
+            cb1 = mpl.use_colorbar.use_colorbarBase(ax1, cmap=cmap,
                                             norm=norm,
                                             orientation='vertical')
             cb1.set_label('Dot Density')
@@ -267,73 +292,74 @@ def piper(dat_piper, plottitle, alphalevel, color):
 
 
 
-###
-# Plot example data
-###
+if __name__ == "__main__":
+    ###
+    # Plot example data
+    ###
 
-# Load data
-dat = np.loadtxt('CondamineData.csv',
-                 delimiter=',',
-                 skiprows=1)
-# define extent map
-bbox = np.array([np.min(dat[:, 1]),
-                 np.min(dat[:, 0]),
-                 np.max(dat[:, 1]),
-                 np.max(dat[:, 0])])
-bbox = bbox + np.array([-0.05 * (bbox[2] - bbox[0]),
-                        -0.05 * (bbox[3] - bbox[1]),
-                        0.05 * (bbox[2] - bbox[0]),
-                        0.05 * (bbox[3] - bbox[1])])
-# Plot example data
-# Piper plot
-rgb = piper(dat[:, 2:10], 'Condamine Alluvium', alphalevel=1.0, color=True)
-# Maps (only data points, no background shape files)
-fig = plt.figure()
-# cations
-ax1 = fig.add_subplot(131,
-                      aspect='equal',
-                      axisbg=[0.75, 0.75, 0.75, 1])
-ax1.scatter(dat[:, 1],
-            dat[:, 0],
-            s=10,
-            c=rgb['cat'],
-            edgecolor='None',
-            zorder=3)
-plt.title('Condamine Cations')
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.grid()
-plt.xlim(bbox[0], bbox[2])
-plt.ylim(bbox[1], bbox[3])
-# central diamond
-ax2 = fig.add_subplot(132,
-                      aspect='equal',
-                      axisbg=[0.75, 0.75, 0.75, 1])
-ax2.scatter(dat[:, 1],
-            dat[:, 0],
-            s=10,
-            c=rgb['diamond'],
-            edgecolor='None',
-            zorder=3)
-plt.title('Condamine Central Diamond')
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.xlim(bbox[0], bbox[2])
-plt.ylim(bbox[1], bbox[3])
-plt.grid()
-# anions
-ax3 = fig.add_subplot(133,
-                      aspect='equal',
-                      axisbg=[0.75, 0.75, 0.75, 1])
-ax3.scatter(dat[:, 1],
-            dat[:, 0],
-            s=10,
-            c=rgb['an'],
-            edgecolor='None',
-            zorder=3)
-plt.title('Condamine Anions')
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.xlim(bbox[0], bbox[2])
-plt.ylim(bbox[1], bbox[3])
-plt.grid()
+    # Load data
+    dat = np.loadtxt('CondamineData.csv',
+                    delimiter=',',
+                    skiprows=1)
+    # define extent map
+    bbox = np.array([np.min(dat[:, 1]),
+                    np.min(dat[:, 0]),
+                    np.max(dat[:, 1]),
+                    np.max(dat[:, 0])])
+    bbox = bbox + np.array([-0.05 * (bbox[2] - bbox[0]),
+                            -0.05 * (bbox[3] - bbox[1]),
+                            0.05 * (bbox[2] - bbox[0]),
+                            0.05 * (bbox[3] - bbox[1])])
+    # Plot example data
+    # Piper plot
+    rgb = piper(dat[:, 2:10], 'Condamine Alluvium', use_color=True)
+    # Maps (only data points, no background shape files)
+    fig = plt.figure()
+    # cations
+    ax1 = fig.add_subplot(131,
+                        aspect='equal',
+                        axisbg=[0.75, 0.75, 0.75, 1])
+    ax1.scatter(dat[:, 1],
+                dat[:, 0],
+                s=10,
+                c=rgb['cat'],
+                edgeuse_color='None',
+                zorder=3)
+    plt.title('Condamine Cations')
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    plt.grid()
+    plt.xlim(bbox[0], bbox[2])
+    plt.ylim(bbox[1], bbox[3])
+    # central diamond
+    ax2 = fig.add_subplot(132,
+                        aspect='equal',
+                        axisbg=[0.75, 0.75, 0.75, 1])
+    ax2.scatter(dat[:, 1],
+                dat[:, 0],
+                s=10,
+                c=rgb['diamond'],
+                edgeuse_color='None',
+                zorder=3)
+    plt.title('Condamine Central Diamond')
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    plt.xlim(bbox[0], bbox[2])
+    plt.ylim(bbox[1], bbox[3])
+    plt.grid()
+    # anions
+    ax3 = fig.add_subplot(133,
+                        aspect='equal',
+                        axisbg=[0.75, 0.75, 0.75, 1])
+    ax3.scatter(dat[:, 1],
+                dat[:, 0],
+                s=10,
+                c=rgb['an'],
+                edgeuse_color='None',
+                zorder=3)
+    plt.title('Condamine Anions')
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    plt.xlim(bbox[0], bbox[2])
+    plt.ylim(bbox[1], bbox[3])
+    plt.grid()
