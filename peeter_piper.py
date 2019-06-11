@@ -88,18 +88,22 @@ def piper(arrays, plottitle, use_color, fig=None, **kwargs):
     '''Create a Piper plot:
 
     Args:
-        arrays (tuple of (n x 8 ndarray, plot_kwargs)): this should be a 
-            tuple where the first item is an n x 8 ndarray (columns correspond to
-            Ca Mg Na K HCO3 CO3 Cl SO4 data) and the second item is a dictionary
-            to pass to plt.plot()
+        arrays (ndarray, or see below): n x 8 ndarray with columns corresponding
+            to Ca Mg Na K HCO3 CO3 Cl SO4 data. See below for a different format
+            for this argument if you want to plot different subsets of data with
+            different marker styles.
         plottitle (str): title of Piper plot
         use_color (bool): use background use_coloring of Piper plot
         fig (Figure): matplotlib Figure to use, one will be created if None
-    
-    Other kwargs are used to control the style of the individual points which
-    are plotted. By default, the points are plotted with 
-    ``plt.scatter(..., marker=".", color="k", alpha=1)``.
 
+    If you would like to plot different sets of data e.g. from different aquifers
+    with different marker styles, you can pass a list of tuples as the first
+    arguments. The first item of each tuple should be an n x 8 ndarray, as usual.
+    The second item should be a dictionary of keyword arguments to ``plt.scatter``.
+    Any keyword arguments for ``plt.scatter`` that are in common to all the 
+    subsets can be passed to the ``piper()`` function directly. By default the
+    markers are plotted with: ``plt.scatter(..., marker=".", color="k", alpha=1)``.
+    
     Returns a dictionary with:
             if use_color = False:
                 cat: [nx3] meq% of cations, order: Ca Mg Na+K
@@ -111,7 +115,14 @@ def piper(arrays, plottitle, use_color, fig=None, **kwargs):
     '''
     kwargs["marker"] = kwargs.get("marker", ".")
     kwargs["alpha"] = kwargs.get("alpha", 1)
-    kwargs["color"] = kwargs.get("color", "k")
+    kwargs["facecolor"] = kwargs.get("facecolor", "k")
+
+    try:
+        shp = arrays.shape
+        if shp[1] == 8:
+            arrays = [(arrays, {})]
+    except:
+        pass
 
     if fig is None:
         fig = plt.figure()
@@ -165,9 +176,11 @@ def piper(arrays, plottitle, use_color, fig=None, **kwargs):
         d_y = 0.5 * an_y + h * an_x + 0.5 * cat_y - h * cat_x
 
         # plot data
-        plt.scatter(cat_x, cat_y, **plt_kws)
-        plt.scatter(an_x, an_y, **{k:v for k, v in plt_kws.items() if not k == "label"})
-        plt.scatter(d_x, d_y, **{k:v for k, v in plt_kws.items() if not k == "label"})
+        kws = dict(kwargs)
+        kws.update(plt_kws)
+        plt.scatter(cat_x, cat_y, **kws)
+        plt.scatter(an_x, an_y, **{k:v for k, v in kws.items() if not k == "label"})
+        plt.scatter(d_x, d_y, **{k:v for k, v in kws.items() if not k == "label"})
 
     # use_color coding Piper plot
     if use_color == False:
