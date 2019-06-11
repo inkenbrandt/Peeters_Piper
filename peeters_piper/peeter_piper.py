@@ -26,17 +26,17 @@ import scipy.interpolate as interpolate
 
 # Define plotting functions hsvtorgb and piper
 def hsvtorgb(H, S, V):
-    '''
-    Converts hsv use_colorspace to rgb
-    INPUT:
-        H: [mxn] matrix of hue ( between 0 and 2pi )
-        S: [mxn] matrix of saturation ( between 0 and 1 )
-        V: [mxn] matrix of value ( between 0 and 1 )
-    OUTPUT:
+    """Converts hsv use_colorspace to rgb
+
+    :param H: [mxn] matrix of hue ( between 0 and 2pi )
+    :param S: [mxn] matrix of saturation ( between 0 and 1 )
+    :param V: [mxn] matrix of value ( between 0 and 1 )
+    :return:
         R: [mxn] matrix of red ( between 0 and 1 )
         G: [mxn] matrix of green ( between 0 and 1 )
         B: [mxn] matrix of blue ( between 0 and 1 )
-    '''
+    """
+
     # conversion (from http://en.wikipedia.org/wiki/HSL_and_HSV)
     C = V * S
     Hs = H / (np.pi / 3)
@@ -85,7 +85,7 @@ def rgb2hex(r,g,b):
 
 
 def piper(arrays, plottitle, use_color, fig=None, **kwargs):
-    '''Create a Piper plot:
+    """Create a Piper plot:
 
     Args:
         arrays (ndarray, or see below): n x 8 ndarray with columns corresponding
@@ -112,7 +112,7 @@ def piper(arrays, plottitle, use_color, fig=None, **kwargs):
                 cat: [nx3] RGB triple cations
                 an:  [nx3] RGB triple anions
                 diamond: [nx3] RGB triple central diamond
-    '''
+    """
     kwargs["marker"] = kwargs.get("marker", ".")
     kwargs["alpha"] = kwargs.get("alpha", 1)
     kwargs["facecolor"] = kwargs.get("facecolor", "k")

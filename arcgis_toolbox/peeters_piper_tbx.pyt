@@ -22,6 +22,8 @@ class AnnoteFinder(object):
     connect('button_press_event', af)
     """
 
+    # http://scipy-cookbook.readthedocs.io/items/Matplotlib_Interactive_Plotting.html
+
     def __init__(self, xdata, ydata, annotes, ax=None, xtol=.01, ytol=.01):
         self.data = list(zip(xdata, ydata, annotes))
         if xtol is None:
@@ -86,20 +88,22 @@ class AnnoteFinder(object):
             self.drawAnnote(self.ax, x, y, a)
 
 
-# Define plotting functions hsvtorgb and piper
+
 def hsvtorgb(H, S, V):
-    """
-    Converts hsv colorspace to rgb
-    INPUT:
-        H: [mxn] matrix of hue ( between 0 and 2pi )
-        S: [mxn] matrix of saturation ( between 0 and 1 )
-        V: [mxn] matrix of value ( between 0 and 1 )
-    OUTPUT:
+    """Converts hsv use_colorspace to rgb
+
+    :param H: [mxn] matrix of hue ( between 0 and 2pi )
+    :param S: [mxn] matrix of saturation ( between 0 and 1 )
+    :param V: [mxn] matrix of value ( between 0 and 1 )
+    :return:
         R: [mxn] matrix of red ( between 0 and 1 )
         G: [mxn] matrix of green ( between 0 and 1 )
         B: [mxn] matrix of blue ( between 0 and 1 )
+
+    :notes: conversion from http://en.wikipedia.org/wiki/HSL_and_HSV
     """
-    # conversion (from http://en.wikipedia.org/wiki/HSL_and_HSV)
+
+    #
     C = V * S
     Hs = H / (np.pi / 3)
     X = C * (1 - np.abs(np.mod(Hs, 2.0 * np.ones_like(Hs)) - 1))
@@ -143,7 +147,11 @@ def hsvtorgb(H, S, V):
 
 
 def mol_convert(dat_piper):
-    # Convert chemistry into plot coordinates
+    """Convert chemistry into plot coordinates
+
+    :param dat_piper: nx8 array in the order [Ca, Mg, Na+K, HCO3 + CO3, Cl, SO4]
+    :return:
+    """
     gmol = np.array([40.078, 24.305, 22.989768, 39.0983, 61.01714, 60.0092, 35.4527, 96.0636])
     eqmol = np.array([2., 2., 1., 1., 1., 2., 1., 2.])
     n = dat_piper.shape[0]
@@ -161,8 +169,14 @@ def mol_convert(dat_piper):
     return cat, an, meqL
 
 
-def ion_in_cartesian(cat,an, offset=0.05):
-    # Convert into cartesian coordinates
+def ion_in_cartesian(cat, an, offset=0.05):
+    """Convert into cartesian coordinates
+
+    :param cat: cation array [Ca, Mg, Na+K]
+    :param an:  anion array [HCO3 + CO3, Cl, SO4]
+    :param offset: charting offset; default is 0.05
+    :return:
+    """
     h = 0.5 * np.tan(np.pi / 3)
     cat_x = 0.5 * (2 * cat[:, 2] + cat[:, 1])
     cat_y = h * cat[:, 1]
@@ -334,6 +348,161 @@ def calc_totals(df1):
     df1['water_type'] = df1[['maj_cation', 'maj_anion']].apply(lambda x: str(x[0]) + '-' + str(x[1]), 1)
     return df1
 
+def data_to_rgb(df_input):
+    data = df_input
+    rgb = piper(df_input)
+
+    data['cat_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['cat']]
+    data['an_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['an']]
+    data['diamond_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['diamond']]
+    return data
+
+
+class PiperPlt(object):
+    def __init__(self):
+        self.chem_file = None
+        self.chem_df = None
+        self.plottitle = "Piper"
+        self.spatref = None
+        self.savedlayer = None
+        self.wrkspace = None
+        self.alphalevel = None
+        self.scaletds = None
+        self.usetds = None
+        self.parm_matches = None
+
+    def piper_plot(self):
+        """
+        Create a Piper plot
+        INPUT:
+            dat_piper: [nx8] matrix, chemical analysis in mg/L
+                        order: Ca Mg Na K HCO3 CO3 Cl SO4
+            plottitle: string with title of Piper plot
+            alphalevel: transparency level of points. If 1, points are opaque
+            color: boolean, use background coloring of Piper plot
+        OUTPUT:
+            figure with piperplot
+            dictionary with:
+                if color = False:
+                    cat: [nx3] meq% of cations, order: Ca Mg Na+K
+                    an:  [nx3] meq% of anions,  order: HCO3+CO3 SO4 Cl
+                if color = True:
+                    cat: [nx3] RGB triple cations
+                    an:  [nx3] RGB triple anions
+                    diamond: [nx3] RGB triple central diamond
+        """
+
+        # make a dict of header and assigned parameter names for matching later
+        inputdata = [i[0] for i in self.parm_matches]
+        tablehead = [i[1] for i in self.parm_matches]
+        header_lookup = dict(zip(inputdata,tablehead))
+        input_lookup = dict(zip(tablehead,inputdata))
+
+        df_input = self.chem_df
+        df_input = df_input.rename(columns = input_lookup)
+        df_input = fillMissing(df_input)
+        dat_piper = df_input[['Ca','Mg','Na','K','HCO3','CO3','Cl','SO4']].values
+
+        data = data_to_rgb(df_input)
+
+        newfile = os.path.dirname(self.chem_file) + '/with_hex_' + os.path.splitext(os.path.basename(self.chem_file))[0] + ".csv"
+
+        cat, an, meqL = mol_convert(dat_piper)
+
+        meq_df = pd.DataFrame(meqL, columns=['Ca_meqL', 'Mg_meqL', 'Na_meqL', 'K_meqL', 'HCO3_meqL',
+                                     'CO3_meqL', 'Cl_meqL', 'SO4_meqL'])
+        data = pd.concat([data,meq_df], axis=1)
+        data = calc_totals(data)
+
+        # https://pubs.usgs.gov/wri/1986/4124/report.pdf
+        # http://inside.mines.edu / ~epoeter / _GW / resultsNOV03.pdf
+
+
+        data['Alkcalc'] = data[['HCO3','CO3']].apply(lambda x: x[0]+2*x[1],1)
+        data['TDScalc'] = data[['Ca','Mg','NaK','Cl','SO4','Alkcalc']].apply(lambda x: np.sum(x[0:-1])+0.6*x[-1],1)
+
+
+        data.to_csv(newfile, index_label='ID')
+
+        mintds = np.min(data['TDScalc'].values)
+        maxtds = np.max(data['TDScalc'].values)
+
+        if self.scaletds:
+            tds_calc_norm = data['TDScalc'].apply(lambda x: (x-mintds)/(maxtds-mintds)*self.scaletds,1)
+        else:
+            tds_calc_norm = data['TDScalc'].apply(lambda x: (x-mintds)/(maxtds-mintds)*10,1)
+
+        # Basic shape of piper plot
+        plottitle = self.plottitle
+        alphalevel = self.alphalevel
+
+
+        offset = 0.05
+        offsety = offset * np.tan(np.pi / 3)
+        h = 0.5 * np.tan(np.pi / 3)
+        ltriangle_x = np.array([0, 0.5, 1, 0])
+        ltriangle_y = np.array([0, h, 0, 0])
+        rtriangle_x = ltriangle_x + 2 * offset + 1
+        rtriangle_y = ltriangle_y
+        diamond_x = np.array([0.5, 1, 1.5, 1, 0.5]) + offset
+        diamond_y = h * (np.array([1, 2, 1, 0, 1])) + (offset * np.tan(np.pi / 3))
+
+        mpl.rcParams['pdf.fonttype'] = 42
+        mpl.rcParams['ps.fonttype'] = 42
+        mpl.rcParams['svg.fonttype'] = 'none'
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, aspect='equal', frameon=False, xticks=[], yticks=[])
+        ax.plot(ltriangle_x, ltriangle_y, '-k')
+        ax.plot(rtriangle_x, rtriangle_y, '-k')
+        ax.plot(diamond_x, diamond_y, '-k')
+
+        cat_x, cat_y, an_x, an_y, d_x, d_y = ion_in_cartesian(cat, an)
+        s_cat, s_an, s_d, RGBA = interpolate_colors()
+
+        # visualise
+        plt.imshow(RGBA,
+                   origin='lower',
+                   aspect=1.0,
+                   extent=(0, 2 + 2 * offset, 0, 2 * h + offsety))
+        # labels and title
+        plt.title(plottitle)
+        plt.text(-offset, -offset, u'$Ca^{2+}$', horizontalalignment='left', verticalalignment='center')
+        plt.text(0.5, h + offset, u'$Mg^{2+}$', horizontalalignment='center', verticalalignment='center')
+        plt.text(1 + offset, -offset, u'$Na^+ + K^+$', horizontalalignment='right', verticalalignment='center')
+        plt.text(1 + offset, -offset, u'$HCO_3^- + CO_3^{2-}$', horizontalalignment='left', verticalalignment='center')
+        plt.text(1.5 + 2 * offset, h + offset, u'$SO_4^{2-}$', horizontalalignment='center', verticalalignment='center')
+        plt.text(2 + 3 * offset, -offset, u'$Cl^-$', horizontalalignment='right', verticalalignment='center')
+
+
+        # plot data
+        if self.usetds:
+            pass
+        else:
+            tds_calc_norm = 1
+
+        if 'ID' not in data.columns:
+            data['ID'] = data.index
+
+        ann = ["{:} Ca: {:.2f}\nMg: {:.2f}\nNaK: {:.2f}\nCl: {:.2f}\nSO4: {:.2f}\nHCO3: {:.2f}\nCO3: {:.2f}".format(data.loc[i,'ID'],
+                                                                                               data.loc[i,'Ca'],
+                                                                                           data.loc[i,'Mg'],
+                                                                                           data.loc[i,'NaK'],
+                                                                                           data.loc[i,'Cl'],
+                                                                                           data.loc[i,'SO4'],
+                                                                                           data.loc[i,'HCO3'],
+                                                                                           data.loc[i,'CO3']) for i in data.index]
+
+        plt.scatter(cat_x, cat_y, s = tds_calc_norm, alpha=alphalevel)
+        plt.scatter(an_x, an_y, s = tds_calc_norm, alpha=alphalevel)
+        plt.scatter(d_x, d_y, alpha=alphalevel, s = tds_calc_norm )
+
+        plotfile = os.path.dirname(self.chem_file) + '/piperplot.pdf'
+        plt.savefig(plotfile)
+
+        plt.show()
+
+
 def get_field_names(table):
     read_descr = arcpy.Describe(table)
     field_names = []
@@ -369,16 +538,6 @@ def table_to_pandas_dataframe(table, field_names=None, query=None, sql_sn=(None,
     # return the pandas data frame
     return df
 
-def data_to_rgb(df_input):
-    data = df_input
-    rgb = piper(df_input)
-
-    data['cat_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['cat']]
-    data['an_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['an']]
-    data['diamond_hex'] = [mpl.colors.rgb2hex(i) for i in rgb['diamond']]
-    return data
-
-
 def parameter(displayName, name, datatype, parameterType='Required', direction='Input', defaultValue=None):
     """The parameter implementation makes it a little difficult to quickly create parameters with defaults. This method
     prepopulates some of these values to make life easier while also allowing setting a default value."""
@@ -403,7 +562,7 @@ def linkAnnotationFinders(afs):
         afs[i].links.extend(allButSelfAfs)
 
 # Load data
-class PiperPlt(object):
+class PiperPltGIS(object):
     def __init__(self):
         self.chem_file = None
         self.chem_df = None
@@ -416,7 +575,7 @@ class PiperPlt(object):
         self.usetds = None
         self.parm_matches = None
 
-    def piper_plot(self):
+    def piper_plot_gis(self):
         """
         Create a Piper plot
         INPUT:
@@ -646,7 +805,7 @@ class PiperTable(object):
         return
 
     def execute(self, parameters, messages):
-        pplot = PiperPlt()
+        pplot = PiperPltGIS()
         pplot.chem_file = parameters[0].valueAsText
         pplot.chem_df = pd.read_csv(parameters[0].valueAsText)
         pplot.spatref = parameters[1].valueAsText
@@ -657,7 +816,7 @@ class PiperTable(object):
         pplot.usetds = parameters[5].value
         pplot.scaletds = parameters[6].value
         pplot.savedlayer = parameters[7].valueAsText
-        pplot.piper_plot()
+        pplot.piper_plot_gis()
         return
 
 class PiperTableFromLayer(object):

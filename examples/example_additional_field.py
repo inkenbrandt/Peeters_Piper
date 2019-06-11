@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from peeter_piper import piper
+from peeters_piper.peeter_piper import piper
 
 filename = "GW20130314-0057-s02_additional_field.csv"
 
