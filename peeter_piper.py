@@ -2,7 +2,7 @@
 Code from
 @article {GWAT:GWAT12118,
 author = {Peeters, Luk},
-title = {A Background Color Scheme for Piper Plots to Spatially Visualize Hydrochemical Patterns},
+title = {A Background use_color Scheme for Piper Plots to Spatially Visualize Hydrochemical Patterns},
 journal = {Groundwater},
 volume = {52},
 number = {1},
@@ -27,7 +27,7 @@ import scipy.interpolate as interpolate
 # Define plotting functions hsvtorgb and piper
 def hsvtorgb(H, S, V):
     '''
-    Converts hsv colorspace to rgb
+    Converts hsv use_colorspace to rgb
     INPUT:
         H: [mxn] matrix of hue ( between 0 and 2pi )
         S: [mxn] matrix of saturation ( between 0 and 1 )
@@ -84,26 +84,35 @@ def rgb2hex(r,g,b):
     return hex
 
 
-def piper(dat_piper, plottitle, alphalevel, color, fig=None):
+def piper(arrays, plottitle, use_color, fig=None, **kwargs):
     '''Create a Piper plot:
 
     Args:
-        dat_piper (n x 8 ndarray): chemical analysis in mg/L; columns should be
-            in the order, Ca Mg Na K HCO3 CO3 Cl SO4
+        arrays (tuple of (n x 8 ndarray, plot_kwargs)): this should be a 
+            tuple where the first item is an n x 8 ndarray (columns correspond to
+            Ca Mg Na K HCO3 CO3 Cl SO4 data) and the second item is a dictionary
+            to pass to plt.plot()
         plottitle (str): title of Piper plot
-        alphalevel (float): transparency level of points. If 1, points are opaque
-        color (bool): use background coloring of Piper plot
+        use_color (bool): use background use_coloring of Piper plot
         fig (Figure): matplotlib Figure to use, one will be created if None
     
+    Other kwargs are used to control the style of the individual points which
+    are plotted. By default, the points are plotted with 
+    ``plt.scatter(..., marker=".", color="k", alpha=1)``.
+
     Returns a dictionary with:
-            if color = False:
+            if use_color = False:
                 cat: [nx3] meq% of cations, order: Ca Mg Na+K
                 an:  [nx3] meq% of anions,  order: HCO3+CO3 SO4 Cl
-            if color = True:
+            if use_color = True:
                 cat: [nx3] RGB triple cations
                 an:  [nx3] RGB triple anions
                 diamond: [nx3] RGB triple central diamond
     '''
+    kwargs["marker"] = kwargs.get("marker", ".")
+    kwargs["alpha"] = kwargs.get("alpha", 1)
+    kwargs["color"] = kwargs.get("color", "k")
+
     if fig is None:
         fig = plt.figure()
     # Basic shape of piper plot
@@ -133,40 +142,41 @@ def piper(dat_piper, plottitle, alphalevel, color, fig=None):
     # Convert chemistry into plot coordinates
     gmol = np.array([40.078, 24.305, 22.989768, 39.0983, 61.01714, 60.0092, 35.4527, 96.0636])
     eqmol = np.array([2., 2., 1., 1., 1., 2., 1., 2.])
-    n = dat_piper.shape[0]
-    meqL = (dat_piper / gmol) * eqmol
-    sumcat = np.sum(meqL[:, 0:4], axis=1)
-    suman = np.sum(meqL[:, 4:8], axis=1)
-    cat = np.zeros((n, 3))
-    an = np.zeros((n, 3))
-    cat[:, 0] = meqL[:, 0] / sumcat  # Ca
-    cat[:, 1] = meqL[:, 1] / sumcat  # Mg
-    cat[:, 2] = (meqL[:, 2] + meqL[:, 3]) / sumcat  # Na+K
-    an[:, 0] = (meqL[:, 4] + meqL[:, 5]) / suman  # HCO3 + CO3
-    an[:, 2] = meqL[:, 6] / suman  # Cl
-    an[:, 1] = meqL[:, 7] / suman  # SO4
+    for dat_piper, plt_kws in arrays:
+        n = dat_piper.shape[0]
+        meqL = (dat_piper / gmol) * eqmol
+        sumcat = np.sum(meqL[:, 0:4], axis=1)
+        suman = np.sum(meqL[:, 4:8], axis=1)
+        cat = np.zeros((n, 3))
+        an = np.zeros((n, 3))
+        cat[:, 0] = meqL[:, 0] / sumcat  # Ca
+        cat[:, 1] = meqL[:, 1] / sumcat  # Mg
+        cat[:, 2] = (meqL[:, 2] + meqL[:, 3]) / sumcat  # Na+K
+        an[:, 0] = (meqL[:, 4] + meqL[:, 5]) / suman  # HCO3 + CO3
+        an[:, 2] = meqL[:, 6] / suman  # Cl
+        an[:, 1] = meqL[:, 7] / suman  # SO4
 
-    # Convert into cartesian coordinates
-    cat_x = 0.5 * (2 * cat[:, 2] + cat[:, 1])
-    cat_y = h * cat[:, 1]
-    an_x = 1 + 2 * offset + 0.5 * (2 * an[:, 2] + an[:, 1])
-    an_y = h * an[:, 1]
-    d_x = an_y / (4 * h) + 0.5 * an_x - cat_y / (4 * h) + 0.5 * cat_x
-    d_y = 0.5 * an_y + h * an_x + 0.5 * cat_y - h * cat_x
+        # Convert into cartesian coordinates
+        cat_x = 0.5 * (2 * cat[:, 2] + cat[:, 1])
+        cat_y = h * cat[:, 1]
+        an_x = 1 + 2 * offset + 0.5 * (2 * an[:, 2] + an[:, 1])
+        an_y = h * an[:, 1]
+        d_x = an_y / (4 * h) + 0.5 * an_x - cat_y / (4 * h) + 0.5 * cat_x
+        d_y = 0.5 * an_y + h * an_x + 0.5 * cat_y - h * cat_x
 
-    # plot data
-    plt.plot(cat_x, cat_y, '.k', alpha=alphalevel)
-    plt.plot(an_x, an_y, '.k', alpha=alphalevel)
-    plt.plot(d_x, d_y, '.k', alpha=alphalevel)
+        # plot data
+        plt.scatter(cat_x, cat_y, **plt_kws)
+        plt.scatter(an_x, an_y, **{k:v for k, v in plt_kws.items() if not k == "label"})
+        plt.scatter(d_x, d_y, **{k:v for k, v in plt_kws.items() if not k == "label"})
 
-    # color coding Piper plot
-    if color == False:
-        # add density color bar if alphalevel < 1
-        if alphalevel < 1.0:
+    # use_color coding Piper plot
+    if use_color == False:
+        # add density use_color bar if alphalevel < 1
+        if kwargs.get("alpha", 1) < 1.0:
             ax1 = fig.add_axes([0.75, 0.4, 0.01, 0.2])
             cmap = plt.cm.gray_r
-            norm = mpl.colors.Normalize(vmin=0, vmax=1 / alphalevel)
-            cb1 = mpl.colorbar.ColorbarBase(ax1, cmap=cmap,
+            norm = mpl.use_colors.Normalize(vmin=0, vmax=1 / kwargs["alpha"])
+            cb1 = mpl.use_colorbar.use_colorbarBase(ax1, cmap=cmap,
                                             norm=norm,
                                             orientation='vertical')
             cb1.set_label('Dot Density')
@@ -289,7 +299,7 @@ if __name__ == "__main__":
                             0.05 * (bbox[3] - bbox[1])])
     # Plot example data
     # Piper plot
-    rgb = piper(dat[:, 2:10], 'Condamine Alluvium', alphalevel=1.0, color=True)
+    rgb = piper(dat[:, 2:10], 'Condamine Alluvium', use_color=True)
     # Maps (only data points, no background shape files)
     fig = plt.figure()
     # cations
@@ -300,7 +310,7 @@ if __name__ == "__main__":
                 dat[:, 0],
                 s=10,
                 c=rgb['cat'],
-                edgecolor='None',
+                edgeuse_color='None',
                 zorder=3)
     plt.title('Condamine Cations')
     plt.xlabel('Longitude')
@@ -316,7 +326,7 @@ if __name__ == "__main__":
                 dat[:, 0],
                 s=10,
                 c=rgb['diamond'],
-                edgecolor='None',
+                edgeuse_color='None',
                 zorder=3)
     plt.title('Condamine Central Diamond')
     plt.xlabel('Longitude')
@@ -332,7 +342,7 @@ if __name__ == "__main__":
                 dat[:, 0],
                 s=10,
                 c=rgb['an'],
-                edgecolor='None',
+                edgeuse_color='None',
                 zorder=3)
     plt.title('Condamine Anions')
     plt.xlabel('Longitude')
