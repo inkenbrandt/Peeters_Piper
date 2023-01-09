@@ -1,3 +1,5 @@
+THIS LIBRARY IS NOW OUT OF DATE.  PLEASE USE [WQChartPy](https://github.com/jyangfsu/WQChartPy) AS IT IS BY THE ORIGINAL AUTHOR AND MUCH MORE ROBUST.
+
 # Peeters_Piper
 This script plots a piper diagram of water chemisty.
 It includes an ArcGIS Toolbox for use in ArcGIS Pro.
